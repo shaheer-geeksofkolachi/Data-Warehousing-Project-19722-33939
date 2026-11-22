@@ -144,7 +144,7 @@ every DAG run succeeded, including the watcher-triggered and scheduled ones, wit
 
 1. **0:00–0:30 Problem** — one slide: the supply gap / under-forecast evidence (SDI.Excel `01_Problem_KPIs`).
 2. **0:30–1:00 Architecture** — `docs/figures/architecture.png`, Airflow DAG list (7 DAGs).
-3. **1:00–1:45 BASE state** — Grafana: Batch (sales sheet is the slow one), Storage (row vs column store), Query (58× speed-up).
+3. **1:00–1:45 BASE state** — Grafana: Batch (sales sheet is the slow one), Storage (row vs column store), Query (~108× speed-up).
 4. **1:45–3:15 Live refresh R1** — trigger `sdi_99_refresh_cycle` (R1); show the watcher log registering files, Airflow
    graph progressing, Streaming dashboard throughput line filling in, rejected rows appearing, Storage row counts growing.
 5. **3:15–4:15 Refresh R2** — trigger again; show SCD2 in DuckDB (`dim_medicine` versions, HOSP003), Query dashboard
