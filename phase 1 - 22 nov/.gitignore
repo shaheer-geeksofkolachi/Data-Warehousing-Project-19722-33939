@@ -1,0 +1,14 @@
+# large source data (GitHub rejects files > 100 MB) - copy the provided files into data/source/ locally
+data/source/*
+!data/source/README.md
+data/landing/*
+data/archive/*
+data/quarantine/*
+data/stream_queue/*
+data/generated/*
+data/work/*
+data/mart/*
+!data/**/.gitkeep
+__pycache__/
+*.pyc
+.env

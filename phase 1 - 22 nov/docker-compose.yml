@@ -1,0 +1,99 @@
+# Pharma SDI - Phase 1 stack:  docker compose up -d --build
+#   Airflow UI  http://localhost:8080   (SimpleAuthManager, every user is admin - local demo only)
+#   Grafana     http://localhost:3000   (anonymous viewer + admin/admin)
+#   Ingest API  http://localhost:8000/docs
+x-sdi-env: &sdi-env
+  SDI_PROJECT_ROOT: /opt/sdi
+  PYTHONPATH: /opt/sdi
+  SDI_PG_DSN: host=postgres port=5432 dbname=pharma_sdi user=postgres password=${POSTGRES_PASSWORD:-postgres}
+  SDI_INGEST_API_URL: http://ingest-api:8000
+  SDI_AIRFLOW_API_URL: http://airflow:8080
+  SDI_STREAM_EPS: ${SDI_STREAM_EPS:-400}
+  SDI_STREAM_MICROBATCH: ${SDI_STREAM_MICROBATCH:-50}
+
+x-sdi-volumes: &sdi-volumes
+  - ./sdi:/opt/sdi/sdi
+  - ./sql:/opt/sdi/sql
+  - ./dags:/opt/sdi/dags
+  - ./scripts:/opt/sdi/scripts
+  - ./data:/opt/sdi/data
+  - ./docs:/opt/sdi/docs          # build_sdi_excel.py / build_reports.py read group_members.csv + figures, write docs
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 20
+
+  sdi-init:                       # creates staging / rejects / ops schemas (idempotent)
+    build: {context: ., dockerfile: docker/Dockerfile.app}
+    environment: *sdi-env
+    volumes: *sdi-volumes
+    working_dir: /opt/sdi
+    command: python -m sdi.ingestion.staging_ddl
+    depends_on: {postgres: {condition: service_healthy}}
+
+  ingest-api:                     # FastAPI ingestion API (batch registration + streaming endpoint + query endpoint)
+    build: {context: ., dockerfile: docker/Dockerfile.app}
+    environment: *sdi-env
+    volumes: *sdi-volumes
+    working_dir: /opt/sdi
+    command: uvicorn sdi.ingestion.api:app --host 0.0.0.0 --port 8000
+    ports: ["8000:8000"]
+    depends_on: {sdi-init: {condition: service_completed_successfully}}
+
+  file-watcher:                   # watchdog on data/landing -> POST /batch/files
+    build: {context: ., dockerfile: docker/Dockerfile.app}
+    environment:
+      <<: *sdi-env
+      SDI_WATCHER_POLLING: "1"   # bind mounts on Docker Desktop do not forward inotify events reliably
+    volumes: *sdi-volumes
+    working_dir: /opt/sdi
+    command: python -m sdi.ingestion.watcher
+    depends_on: [ingest-api]
+
+  airflow:                        # Airflow 3 (api-server + scheduler + dag-processor + triggerer in one container)
+    build: {context: ., dockerfile: docker/Dockerfile.airflow}
+    environment:
+      <<: *sdi-env
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/airflow
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/sdi/dags
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "True"
+      AIRFLOW__DAG_PROCESSOR__REFRESH_INTERVAL: "30"
+      AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "True"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "False"
+    user: "${AIRFLOW_UID:-50000}:0"
+    volumes: *sdi-volumes
+    command: standalone
+    ports: ["8080:8080"]
+    depends_on: {sdi-init: {condition: service_completed_successfully}}
+
+  grafana:
+    image: grafana/grafana-oss:11.4.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/00_overview.json
+      SDI_PG_HOST: postgres
+      SDI_PG_USER: postgres
+      SDI_PG_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3000:3000"]
+    depends_on: {postgres: {condition: service_healthy}}
+
+volumes:
+  pgdata:
