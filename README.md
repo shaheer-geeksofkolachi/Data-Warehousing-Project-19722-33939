@@ -34,7 +34,7 @@ price-change impact).
 |---|---|
 | 1. Phase.1.Report (PDF, ≤ 5 pages) | `docs/Phase.1.Report.pdf` |
 | 2. SDI.Excel (complete) | `docs/SDI.Excel.xlsx` (26 sheets) |
-| 3. Demo video (≤ 5 min) | *link here* — script below |
+| 3. Demo video (≤ 5 min) | [Google Drive folder](https://drive.google.com/drive/folders/1264p06CBMcvZOJBQY-h6htO9d8-MXxNf?usp=sharing) — script below |
 | 4. All code (Airflow etc.) | `dags/`, `sdi/`, `sql/`, `scripts/`, `grafana/`, `docker-compose.yml` |
 | 5. Group member information | table above + `SDI.Excel` sheet `00_Cover` |
 | Oversampling report (1–2 pages, 2 %) | `docs/Oversampling.Report.pdf` |
