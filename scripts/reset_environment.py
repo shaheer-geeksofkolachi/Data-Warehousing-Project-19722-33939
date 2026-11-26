@@ -12,7 +12,8 @@ from sdi.ingestion.staging_ddl import init_postgres
 
 if "--yes" not in sys.argv:
     sys.exit("refusing to reset without --yes")
-pg_exec("DROP SCHEMA IF EXISTS staging CASCADE; DROP SCHEMA IF EXISTS ops CASCADE; DROP SCHEMA IF EXISTS rejects CASCADE;")
+pg_exec("DROP SCHEMA IF EXISTS staging CASCADE; DROP SCHEMA IF EXISTS ops CASCADE; DROP SCHEMA IF EXISTS rejects CASCADE; "
+        "DROP SCHEMA IF EXISTS sdi_bi CASCADE; DROP SCHEMA IF EXISTS sdi_bi_new CASCADE; DROP SCHEMA IF EXISTS sdi_bi_old CASCADE;")
 for d in (LANDING_DIR, ARCHIVE_DIR, QUARANTINE_DIR, STREAM_QUEUE_DIR, GENERATED_DIR, WORK_DIR, MART_DIR):
     shutil.rmtree(d, ignore_errors=True)
     d.mkdir(parents=True, exist_ok=True)

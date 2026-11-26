@@ -52,9 +52,11 @@ def sdi_03_transform():
 
     trigger_query = TriggerDagRunOperator(task_id="trigger_query_layer", trigger_dag_id="sdi_04_query_layer",
                                           wait_for_completion=False)
+    trigger_bi = TriggerDagRunOperator(task_id="trigger_bi_refresh", trigger_dag_id="sdi_06_bi_refresh",
+                                       wait_for_completion=False)
 
     (init_mart() >> extract_delta() >> load_dimensions() >> load_fact_sales() >> load_fact_hospital_demand()
-     >> build_aggregates() >> reconcile_and_commit() >> trigger_query)
+     >> build_aggregates() >> reconcile_and_commit() >> [trigger_query, trigger_bi])
 
 
 sdi_03_transform()

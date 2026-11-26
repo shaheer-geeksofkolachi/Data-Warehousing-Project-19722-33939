@@ -4,6 +4,8 @@ Automated DWH + BI pipeline for a pharmaceutical cold supply chain, orchestrated
 Phase 1 (Milestone 1) is implemented **up to the query layer**: oversampling → batch + streaming ingestion
 (API + file-watcher) → PostgreSQL staging (ODS) → DuckDB star schema (fact constellation) → optimised query layer,
 observed through **4 Grafana data-engineering dashboards** (+ an overview).
+**Milestone 2 adds the BI layer:** a Postgres serving schema (`sdi_bi`) refreshed by Airflow and **4 Apache Superset
+dashboards** (http://localhost:8088, admin/admin) that update automatically after every data refresh.
 
 ## Group members
 
@@ -39,6 +41,51 @@ price-change impact).
 | 5. Group member information | table above + `SDI.Excel` sheet `00_Cover` |
 | Oversampling report (1–2 pages, 2 %) | `docs/Oversampling.Report.pdf` |
 
+## Milestone 2 — BI layer (submission items)
+
+| Requirement | Location |
+|---|---|
+| 1. Phase.1.BI.Report (PDF, ≤ 5 pages) | `docs/Phase.1.BI.Report.pdf` (5 pages) |
+| 2. SDI.Excel.BI (complete) | `docs/SDI.Excel.BI.xlsx` (23 sheets, 342 live formulas, 0 errors) |
+| 3. Demo video (≤ 5 min, ≥ 2 refreshes) | _add link_ — script below |
+| 4. All code | `sdi/bi/`, `dags/sdi_06_bi_refresh.py`, `bi/superset/`, `docker/Dockerfile.superset`, `scripts/*bi*` |
+| 5. Group member information | table above + `SDI.Excel.BI` sheet `00_Cover` |
+| Refresh evidence | `docs/bi_screenshots/{BASE,R1,R2}/` + `SDI.Excel.BI` sheets `08`, `09`, `15–17` |
+
+**Dashboards** (all share a refresh-status banner, filter bar, cross-filtering, drill-to-detail, 30 s auto-refresh):
+
+| Dashboard | Answers |
+|---|---|
+| BI-1 Hospital Forecast vs Actual & Unfulfilled Demand | forecast bias / WAPE, request→receipt funnel, hotspot hospitals × classes |
+| BI-2 Channel Revenue Split & Gross Margin | Retail vs Hospital pharmacy vs E-commerce revenue, margin, promotions, returns |
+| BI-3 Fast vs Slow-moving Medicines (Cold Chain) | top-10 fast/slow by velocity, therapeutic-class treemap, cold-chain value |
+| BI-4 Unified Demand & Refresh Tracker | total demand incl. hospital wards, demand vs supply, KPIs per refresh |
+
+**How the refresh works:** `sdi_03_transform` (and `sdi_99_refresh_cycle` as its last step) triggers
+`sdi_06_bi_refresh`: `publish_bi_mart` (DuckDB gold → `sdi_bi_new` → atomic swap, read-only `bi_reader`) →
+`snapshot_bi_kpis` (21 KPIs → `ops.bi_kpi_snapshot`) → `wait_for_superset` → `sync_superset` (dashboards as code,
+`python -m sdi.bi.superset provision`) → `warm_bi_dashboards` (every chart fetched and timed → `ops.query_log`, shown in
+the Grafana query dashboard).
+
+**Our run:** BASE (data to 2025-12-31, 500,000 sales) → R1 (2026-01-31, 511,221) → R2 (2026-02-28, 522,478; 65
+medicines). Supply gap 456,015 → 469,664 → 482,853 packs; 47 charts render with 0 errors after each refresh,
+average Superset chart fetch ≈ 80 ms; BI ↔ mart ↔ staging reconciliation 7/7 PASS.
+
+Rebuild the BI deliverables after a run: `python scripts/make_bi_figures.py && python scripts/build_sdi_excel_bi.py &&
+python <xlsx-skill>/recalc.py docs/SDI.Excel.BI.xlsx && python scripts/screenshot_bi.py docs/bi_screenshots/<TAG> &&
+python scripts/build_bi_report.py`.
+
+### Milestone 2 demo video script (≤ 5 min, shows 2 refreshes)
+
+1. **0:00–0:30 Problem + BI architecture** — `docs/figures/bi_architecture.png`.
+2. **0:30–1:30 BASE dashboards** — Superset BI-1 → BI-4; point at the refresh banner (BASE, data as of 2025-12-31) and one story per dashboard.
+3. **1:30–2:45 Refresh 1 (R1)** — Airflow → trigger `sdi_99_refresh_cycle` with `{"refresh_tag": "R1"}`; show the graph
+   reaching `bi_refresh`, then BI-4: banner now R1 / 2026-01-31, new month on every time axis, KPI pivot gains an R1 column,
+   latest transactions show `stream / R1` rows. Optionally show `sdi_bi.bi_refresh_history` in SQL Lab (DWH refreshed).
+4. **2:45–4:00 Refresh 2 (R2)** — trigger again with R2; BI-3 now lists 65 medicines (2 new launches), BI-1 supply gap grows,
+   BI-4 pivot shows BASE → R1 → R2.
+5. **4:00–5:00 Grafana + Excel** — Grafana query dashboard "BI dashboard (Superset)" fetch times; `SDI.Excel.BI` sheet `08_Refresh_Evidence`.
+
 ## Architecture
 
 ![architecture](docs/figures/architecture.png)
@@ -52,6 +99,7 @@ price-change impact).
 | Transform & model | DuckDB | `sql/duckdb/01_star_schema.sql`, `sdi/warehouse/transform.py` | `sdi_03_transform` |
 | Query layer | DuckDB + Postgres | `sdi/query/{catalog,runner}.py` | `sdi_04_query_layer` |
 | One-click refresh | Airflow | `dags/sdi_99_refresh_cycle.py` | `sdi_99_refresh_cycle` |
+| BI serving + dashboards | Postgres `sdi_bi` + Superset 4.1 | `sdi/bi/{publish,superset}.py`, `bi/superset/` | `sdi_06_bi_refresh` |
 | DE dashboards | Grafana 11 | `grafana/` (provisioned) | – |
 
 ![star schema](docs/figures/star_schema.png)
@@ -72,6 +120,7 @@ docker compose up -d --build
 | Airflow UI | http://localhost:8080 (local demo: every user is admin) |
 | Grafana | http://localhost:3000 (anonymous viewer, admin/admin) → folder *SDI Phase 1 - Data Engineering* |
 | Ingestion API (Swagger) | http://localhost:8000/docs |
+| Superset (BI) | http://localhost:8088 (admin/admin) → Dashboards → *SDI · BI-1 … BI-4* (created on the first refresh) |
 | Postgres | localhost:5432 `pharma_sdi` (postgres/postgres) |
 
 Then in Airflow trigger **`sdi_99_refresh_cycle`** three times with `refresh_tag` = `BASE`, then `R1`, then `R2`
@@ -155,11 +204,13 @@ every DAG run succeeded, including the watcher-triggered and scheduled ones, wit
 
 ```
 dags/                Airflow DAGs (one per layer + orchestrator) and shared defaults/callbacks
-sdi/                 Python package: config, sources registry, generator, ingestion, warehouse, query, monitoring
+sdi/                 Python package: config, sources registry, generator, ingestion, warehouse, query, monitoring, bi
+bi/superset/         Superset config (mounted into the superset containers)
 sql/postgres         ops / rejects schemas + generated staging DDL
 sql/duckdb           star schema DDL (dims, facts, role-playing views)
 grafana/             provisioning (datasource, dashboard provider) + 5 dashboard JSON files
 scripts/             reset, run cycle, build dashboards / figures / SDI.Excel / reports
-docs/                Phase.1.Report.pdf, Oversampling.Report.pdf, SDI.Excel.xlsx, figures/
+docs/                Phase.1.Report.pdf, Phase.1.BI.Report.pdf, Oversampling.Report.pdf, SDI.Excel.xlsx, SDI.Excel.BI.xlsx,
+                     figures/, bi_screenshots/
 data/                source/ (you add), landing/, archive/, stream_queue/, generated/, mart/ (all git-ignored)
 ```

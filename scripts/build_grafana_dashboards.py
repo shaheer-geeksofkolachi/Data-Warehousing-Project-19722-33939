@@ -352,7 +352,8 @@ def query_dashboard():
                          count(*) FILTER (WHERE caller='benchmark') AS benchmark,
                          count(*) FILTER (WHERE caller='dashboard_refresh') AS "dashboard refresh",
                          count(*) FILTER (WHERE caller='adhoc_analyst') AS "ad-hoc analyst",
-                         count(*) FILTER (WHERE caller='api') AS api
+                         count(*) FILTER (WHERE caller='api') AS api,
+                         count(*) FILTER (WHERE caller='bi_dashboard') AS "BI dashboard (Superset)"
                        FROM ops.query_log WHERE {REFRESH_FILTER} GROUP BY 1 ORDER BY 1""", 0, y, 8, 9, stacked=True),
           timeseries("Query executions over time (per minute, by status)",
                      """SELECT date_trunc('minute', executed_at) AS time, status AS metric, count(*) AS value
@@ -379,6 +380,20 @@ def query_dashboard():
                 f"""SELECT executed_at, caller, query_id, engine, left(error_message, 120) AS error
                     FROM ops.query_log WHERE status='FAILED' AND {REFRESH_FILTER} ORDER BY executed_at DESC""",
                 16, y, 8, 10)]
+    y += 10
+    p += [barchart("BI layer: average execution time per Superset dashboard widget (ms)",
+                   f"""SELECT left(widget_name, 55) AS widget, round(avg(exec_ms)::numeric, 1) AS "avg ms",
+                              round(max(exec_ms)::numeric, 1) AS "max ms"
+                       FROM ops.query_log WHERE caller='bi_dashboard' AND status='SUCCESS' AND {REFRESH_FILTER}
+                       GROUP BY widget_name ORDER BY avg(exec_ms) DESC""", 0, y, 16, 14, horizontal=True, unit="ms",
+                   desc="Every Superset chart fetch made by DAG sdi_06_bi_refresh (live query through Superset, no cache)."),
+          stat("BI chart fetches", f"SELECT count(*) FROM ops.query_log WHERE caller='bi_dashboard' AND {REFRESH_FILTER}",
+               16, y, 4, 7, color="green", desc="Counter incremented every time a BI component fetches data"),
+          stat("BI avg fetch time", f"SELECT avg(exec_ms) FROM ops.query_log WHERE caller='bi_dashboard' AND status='SUCCESS' "
+                                    f"AND {REFRESH_FILTER}", 20, y, 4, 7, unit="ms", decimals=0, color="blue"),
+          stat("BI fetch error rate", f"SELECT 100.0*count(*) FILTER (WHERE status='FAILED')/nullif(count(*),0) FROM ops.query_log "
+                                      f"WHERE caller='bi_dashboard' AND {REFRESH_FILTER}", 16, y + 7, 8, 7, unit="percent",
+               decimals=2, thresholds=[{"color": "green", "value": None}, {"color": "red", "value": 1}])]
     return dashboard("sdi-query-layer", "SDI · 4 · Query Layer & Optimisation", p,
                      "Query Execution Time, Daily Active Query Count, Query Error Rate", time_from="now-24h")
 

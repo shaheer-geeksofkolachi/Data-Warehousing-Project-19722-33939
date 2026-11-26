@@ -1,6 +1,6 @@
 """DAG sdi_99_refresh_cycle - one-click end-to-end refresh (used in the demo).
 
-generator -> batch ingestion -> stream ingestion -> transform -> query layer -> storage metrics, each step waiting
+generator -> batch ingestion -> stream ingestion -> transform -> query layer -> BI refresh (Superset), each step waiting
 for the previous DAG run to finish. Choose refresh_tag BASE (initial historical load from the provided workbook),
 R1 or R2."""
 from airflow.sdk import dag, task, Param, get_current_context
@@ -36,12 +36,14 @@ def sdi_99_refresh_cycle():
                                       wait_for_completion=True, poke_interval=10)
     query = TriggerDagRunOperator(task_id="query_layer", trigger_dag_id="sdi_04_query_layer", conf=conf,
                                   wait_for_completion=True, poke_interval=10)
+    bi = TriggerDagRunOperator(task_id="bi_refresh", trigger_dag_id="sdi_06_bi_refresh", conf=conf,
+                               wait_for_completion=True, poke_interval=10)
 
     branch = base_or_refresh()
     stage = stage_base_workbook()
     branch >> [stage, gen]
     [stage, gen] >> batch          # batch runs after whichever branch was taken
-    batch >> stream >> transform >> query
+    batch >> stream >> transform >> query >> bi
 
 
 sdi_99_refresh_cycle()

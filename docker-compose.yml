@@ -2,6 +2,7 @@
 #   Airflow UI  http://localhost:8080   (SimpleAuthManager, every user is admin - local demo only)
 #   Grafana     http://localhost:3000   (anonymous viewer + admin/admin)
 #   Ingest API  http://localhost:8000/docs
+#   Superset    http://localhost:8088   (BI dashboards, admin/admin)
 x-sdi-env: &sdi-env
   SDI_PROJECT_ROOT: /opt/sdi
   PYTHONPATH: /opt/sdi
@@ -10,6 +11,10 @@ x-sdi-env: &sdi-env
   SDI_AIRFLOW_API_URL: http://airflow:8080
   SDI_STREAM_EPS: ${SDI_STREAM_EPS:-400}
   SDI_STREAM_MICROBATCH: ${SDI_STREAM_MICROBATCH:-50}
+  SDI_SUPERSET_URL: http://superset:8088
+  SDI_SUPERSET_USER: admin
+  SDI_SUPERSET_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-admin}
+  SDI_BI_SQLALCHEMY_URI: postgresql+psycopg2://bi_reader:bi_reader@postgres:5432/pharma_sdi
 
 x-sdi-volumes: &sdi-volumes
   - ./sdi:/opt/sdi/sdi
@@ -78,6 +83,29 @@ services:
     command: standalone
     ports: ["8080:8080"]
     depends_on: {sdi-init: {condition: service_completed_successfully}}
+
+  superset-init:                  # one-shot: metadata DB migrations, admin user, roles
+    build: {context: ., dockerfile: docker/Dockerfile.superset}
+    environment: &superset-env
+      SUPERSET_CONFIG_PATH: /app/pythonpath/superset_config.py
+      SUPERSET_METADATA_URI: postgresql+psycopg2://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/superset
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-sdi-phase1-bi-demo-secret-key-change-me}
+    volumes:
+      - ./bi/superset/superset_config.py:/app/pythonpath/superset_config.py:ro
+    command: >
+      bash -c "superset db upgrade &&
+               (superset fab create-admin --username admin --firstname SDI --lastname Admin
+                 --email admin@sdi.local --password ${SUPERSET_ADMIN_PASSWORD:-admin} || true) &&
+               superset init"
+    depends_on: {sdi-init: {condition: service_completed_successfully}}
+
+  superset:                       # BI layer: dashboards are created/updated by DAG sdi_06_bi_refresh (dashboards as code)
+    build: {context: ., dockerfile: docker/Dockerfile.superset}
+    environment: *superset-env
+    volumes:
+      - ./bi/superset/superset_config.py:/app/pythonpath/superset_config.py:ro
+    ports: ["8088:8088"]
+    depends_on: {superset-init: {condition: service_completed_successfully}}
 
   grafana:
     image: grafana/grafana-oss:11.4.0

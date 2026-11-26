@@ -22,4 +22,5 @@ run sdi_01_batch_ingestion
 run sdi_03_transform
 run sdi_04_query_layer
 run sdi_05_storage_metrics
+run sdi_06_bi_refresh
 echo "cycle $TAG complete"

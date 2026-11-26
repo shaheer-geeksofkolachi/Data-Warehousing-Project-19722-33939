@@ -30,8 +30,27 @@ def staging_ddl() -> str:
     return "CREATE SCHEMA IF NOT EXISTS staging;\n\n" + "\n".join(parts)
 
 
+def ensure_superset_db(name="superset"):
+    """Superset keeps its metadata (dashboards, charts, users) in its own Postgres database."""
+    import re
+    import psycopg2
+    from ..config import PG_DSN
+    dsn = re.sub(r"dbname=\S+", "dbname=postgres", PG_DSN)
+    conn = psycopg2.connect(dsn)
+    conn.autocommit = True
+    with conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (name,))
+        if not cur.fetchone():
+            cur.execute(f"CREATE DATABASE {name}")
+    conn.close()
+
+
 def init_postgres():
-    """Idempotent: creates ops/rejects/staging schemas and tables."""
+    """Idempotent: creates ops/rejects/staging schemas and tables (+ the Superset metadata database)."""
+    try:
+        ensure_superset_db()
+    except Exception as e:      # never block the pipeline on the BI metadata DB
+        print(f"[sdi] could not ensure superset database: {e}")
     ops_sql = (PROJECT_ROOT / "sql/postgres/01_ops_and_rejects.sql").read_text()
     ddl = staging_ddl()
     Path(PROJECT_ROOT / "sql/postgres/02_staging_tables.sql").write_text(

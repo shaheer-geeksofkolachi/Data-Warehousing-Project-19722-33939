@@ -474,7 +474,7 @@
             "type": "grafana-postgresql-datasource",
             "uid": "sdi-postgres"
           },
-          "rawSql": "SELECT coalesce(refresh_tag,'none') AS refresh,\n                         count(*) FILTER (WHERE caller='benchmark') AS benchmark,\n                         count(*) FILTER (WHERE caller='dashboard_refresh') AS \"dashboard refresh\",\n                         count(*) FILTER (WHERE caller='adhoc_analyst') AS \"ad-hoc analyst\",\n                         count(*) FILTER (WHERE caller='api') AS api\n                       FROM ops.query_log WHERE refresh_tag IN (${refresh:sqlstring}) GROUP BY 1 ORDER BY 1",
+          "rawSql": "SELECT coalesce(refresh_tag,'none') AS refresh,\n                         count(*) FILTER (WHERE caller='benchmark') AS benchmark,\n                         count(*) FILTER (WHERE caller='dashboard_refresh') AS \"dashboard refresh\",\n                         count(*) FILTER (WHERE caller='adhoc_analyst') AS \"ad-hoc analyst\",\n                         count(*) FILTER (WHERE caller='api') AS api,\n                         count(*) FILTER (WHERE caller='bi_dashboard') AS \"BI dashboard (Superset)\"\n                       FROM ops.query_log WHERE refresh_tag IN (${refresh:sqlstring}) GROUP BY 1 ORDER BY 1",
           "format": "table",
           "rawQuery": true,
           "editorMode": "code"
@@ -713,6 +713,233 @@
               "type": "auto"
             }
           }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 14,
+      "title": "BI layer: average execution time per Superset dashboard widget (ms)",
+      "type": "barchart",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "sdi-postgres"
+      },
+      "description": "Every Superset chart fetch made by DAG sdi_06_bi_refresh (live query through Superset, no cache).",
+      "gridPos": {
+        "x": 0,
+        "y": 38,
+        "w": 16,
+        "h": 14
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "sdi-postgres"
+          },
+          "rawSql": "SELECT left(widget_name, 55) AS widget, round(avg(exec_ms)::numeric, 1) AS \"avg ms\",\n                              round(max(exec_ms)::numeric, 1) AS \"max ms\"\n                       FROM ops.query_log WHERE caller='bi_dashboard' AND status='SUCCESS' AND refresh_tag IN (${refresh:sqlstring})\n                       GROUP BY widget_name ORDER BY avg(exec_ms) DESC",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "showValue": "auto",
+        "groupWidth": 0.75,
+        "barWidth": 0.9,
+        "stacking": "none",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        },
+        "xTickLabelRotation": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 0
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 15,
+      "title": "BI chart fetches",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "sdi-postgres"
+      },
+      "description": "Counter incremented every time a BI component fetches data",
+      "gridPos": {
+        "x": 16,
+        "y": 38,
+        "w": 4,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "sdi-postgres"
+          },
+          "rawSql": "SELECT count(*) FROM ops.query_log WHERE caller='bi_dashboard' AND refresh_tag IN (${refresh:sqlstring})",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 16,
+      "title": "BI avg fetch time",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "sdi-postgres"
+      },
+      "description": "",
+      "gridPos": {
+        "x": 20,
+        "y": 38,
+        "w": 4,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "sdi-postgres"
+          },
+          "rawSql": "SELECT avg(exec_ms) FROM ops.query_log WHERE caller='bi_dashboard' AND status='SUCCESS' AND refresh_tag IN (${refresh:sqlstring})",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "decimals": 0,
+          "unit": "ms"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 17,
+      "title": "BI fetch error rate",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "sdi-postgres"
+      },
+      "description": "",
+      "gridPos": {
+        "x": 16,
+        "y": 45,
+        "w": 8,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "sdi-postgres"
+          },
+          "rawSql": "SELECT 100.0*count(*) FILTER (WHERE status='FAILED')/nullif(count(*),0) FROM ops.query_log WHERE caller='bi_dashboard' AND refresh_tag IN (${refresh:sqlstring})",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "percent"
         },
         "overrides": []
       }
